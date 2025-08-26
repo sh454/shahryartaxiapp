@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SwiftRide Admin Panel</title>
+    <link rel="stylesheet" href="https://cdn.tailwindcss.com">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            background: linear-gradient(to right, #f3f4f6, #e5e7eb);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: Arial, sans-serif;
+        }
+        .panel-container {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            max-width: 800px;
+            width: 100%;
+        }
+        .hidden { display: none; }
+        .booking-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+        .booking-table th, .booking-table td {
+            border: 1px solid #e5e7eb;
+            padding: 0.75rem;
+            text-align: left;
+        }
+        .booking-table th {
+            background: #f9fafb;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="panel-container">
+        <h1 class="text-2xl font-bold text-center mb-6">SwiftRide Admin Panel</h1>
+        
+        <!-- Password Giriş Formu -->
+        <form id="loginForm">
+            <label class="block text-gray-700 mb-2" for="password">Admin Password</label>
+            <input type="password" id="password" class="w-full p-3 border border-gray-300 rounded-lg mb-4" required>
+            <button type="submit" class="w-full bg-blue-500 text-white py-3 rounded-full font-bold hover:bg-blue-600 transition">Login</button>
+        </form>
+
+        <!-- Admin Paneli İçeriği -->
+        <div id="adminContent" class="hidden">
+            <!-- Ücret Ayarları Formu -->
+            <form id="ratesForm" class="mt-6">
+                <h2 class="text-xl font-semibold mb-4">Update Fare Rates</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label class="block text-gray-700 mb-2" for="baseFare">Base Fare ($)</label>
+                        <input type="number" id="baseFare" step="0.01" class="w-full p-3 border border-gray-300 rounded-lg" required>
+                    </div>
+                    <div>
+                        <label class="block text-gray-700 mb-2" for="standardRate">Standard Rate per km ($)</label>
+                        <input type="number" id="standardRate" step="0.01" class="w-full p-3 border border-gray-300 rounded-lg" required>
+                    </div>
+                    <div>
+                        <label class="block text-gray-700 mb-2" for="executiveRate">Executive Rate per km ($)</label>
+                        <input type="number" id="executiveRate" step="0.01" class="w-full p-3 border border-gray-300 rounded-lg" required>
+                    </div>
+                    <div>
+                        <label class="block text-gray-700 mb-2" for="luxuryRate">Luxury Rate per km ($)</label>
+                        <input type="number" id="luxuryRate" step="0.01" class="w-full p-3 border border-gray-300 rounded-lg" required>
+                    </div>
+                    <div>
+                        <label class="block text-gray-700 mb-2" for="minivanRate">Minivan Rate per km ($)</label>
+                        <input type="number" id="minivanRate" step="0.01" class="w-full p-3 border border-gray-300 rounded-lg" required>
+                    </div>
+                </div>
+                <button type="submit" class="w-full bg-green-500 text-white py-3 rounded-full font-bold hover:bg-green-600 transition">Save Rates</button>
+            </form>
+
+            <!-- Rezervasyonları Görüntüleme -->
+            <div class="mt-8">
+                <h2 class="text-xl font-semibold mb-4">Bookings</h2>
+                <table class="booking-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Phone</th>
+                            <th>Email</th>
+                            <th>Pickup</th>
+                            <th>Destination</th>
+                            <th>Date & Time</th>
+                            <th>Vehicle</th>
+                            <th>Payment</th>
+                            <th>Fare</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bookingsTable"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const HARD_CODED_PASSWORD = 'admin123'; // Üretimde hash'leyin
+
+        document.getElementById('loginForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const password = document.getElementById('password').value;
+            if (password === HARD_CODED_PASSWORD) {
+                document.getElementById('loginForm').classList.add('hidden');
+                document.getElementById('adminContent').classList.remove('hidden');
+                loadRates();
+                loadBookings();
+            } else {
+                alert('Incorrect password');
+            }
+        });
+
+        async function loadRates() {
+            try {
+                const response = await fetch('http://localhost:3000/rates');
+                const rates = await response.json();
+                document.getElementById('baseFare').value = rates.baseFare;
+                document.getElementById('standardRate').value = rates.standard;
+                document.getElementById('executiveRate').value = rates.executive;
+                document.getElementById('luxuryRate').value = rates.luxury;
+                document.getElementById('minivanRate').value = rates.minivan;
+            } catch (err) {
+                console.error('Error loading rates:', err);
+            }
+        }
+
+        async function loadBookings() {
+            try {
+                const response = await fetch('http://localhost:3000/bookings');
+                const bookings = await response.json();
+                const tbody = document.getElementById('bookingsTable');
+                tbody.innerHTML = '';
+                bookings.forEach(booking => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${booking.name}</td>
+                        <td>${booking.phone}</td>
+                        <td>${booking.email}</td>
+                        <td>${booking.pickup}</td>
+                        <td>${booking.destination}</td>
+                        <td>${booking.date} at ${booking.time}</td>
+                        <td>${booking.vehicle}</td>
+                        <td>${booking.paymentMethod}</td>
+                        <td>${booking.estimatedFare}</td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            } catch (err) {
+                console.error('Error loading bookings:', err);
+            }
+        }
+
+        document.getElementById('ratesForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const rates = {
+                baseFare: parseFloat(document.getElementById('baseFare').value),
+                standard: parseFloat(document.getElementById('standardRate').value),
+                executive: parseFloat(document.getElementById('executiveRate').value),
+                luxury: parseFloat(document.getElementById('luxuryRate').value),
+                minivan: parseFloat(document.getElementById('minivanRate').value)
+            };
+            try {
+                await fetch('http://localhost:3000/update-rates', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(rates)
+                });
+                alert('Rates updated successfully');
+            } catch (err) {
+                console.error('Error updating rates:', err);
+                alert('Failed to update rates');
+            }
+        });
+    </script>
+</body>
+</html>

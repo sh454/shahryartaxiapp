@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SwiftRide - Book Your Ride</title>
+    <link rel="stylesheet" href="https://cdn.tailwindcss.com">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY_HERE&libraries=places&callback=initAutocomplete" async defer></script>
+    <script src="https://js.stripe.com/v3/"></script>
+    <style>
+        body {
+            background: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)), url('https://images.unsplash.com/photo-1507525428034-b723cf961d3e?ixlib=rb-4.0.3&auto=format&fit=crop&w=1470&q=80');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }
+        #card-element {
+            background: white;
+            padding: 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+        .form-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(8px);
+        }
+        .passenger-input {
+            animation: fadeIn 0.3s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .pac-container {
+            z-index: 10000 !important;
+        }
+    </style>
+</head>
+<body class="font-sans text-gray-800">
+    <!-- Navigation -->
+    <nav class="bg-black text-white py-4 px-6 shadow-lg fixed w-full z-50">
+        <div class="container mx-auto flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <i class="fas fa-taxi text-yellow-400 text-2xl"></i>
+                <span class="text-xl font-bold">Swift<span class="text-yellow-400">Ride</span></span>
+            </div>
+            <div class="flex items-center space-x-4">
+                <a href="index.html" class="text-white hover:text-yellow-400 transition" data-key="back_to_home">Back to Home</a>
+                <a href="admin.html" class="text-white hover:text-yellow-400 transition">Admin Panel</a>
+                <select id="language-select" class="bg-black text-white border border-white px-2 py-1 rounded">
+                    <option value="en">English</option>
+                    <option value="de">Deutsch</option>
+                    <option value="ar">العربية</option>
+                </select>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Booking Form Section -->
+    <section class="py-24 px-6 min-h-screen flex items-center">
+        <div class="container mx-auto max-w-3xl form-container rounded-xl p-8 shadow-2xl">
+            <h1 class="text-3xl font-bold text-center mb-8 text-gray-800" data-key="book_your_ride">Book Your Ride</h1>
+            <form id="fullBookingForm">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <div>
+                        <label class="block text-gray-700 mb-2" for="name" data-key="name">Name</label>
+                        <input type="text" id="name" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400" required>
+                    </div>
+                    <div>
+                        <label class="block text-gray-700 mb-2" for="phone" data-key="phone">Phone Number</label>
+                        <input type="tel" id="phone" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400" required>
+                    </div>
+                </div>
+                
+                <div class="mb-6">
+                    <label class="block text-gray-700 mb-2" for="email" data-key="email">Email</label>
+                    <input type="email" id="email" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400" required>
+                </div>
+                
+                <!-- Passenger Count -->
+                <div class="mb-6">
+                    <label class="block text-gray-700 mb-2" for="passenger-count" data-key="passenger_count">Number of Passengers</label>
+                    <select id="passenger-count" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400" required>
+                        <option value="1">1 Passenger</option>
+                        <option value="2">2 Passengers</option>
+                        <option value="3">3 Passengers</option>
+                        <option value="4">4 Passengers</option>
+                        <option value="5">5 Passengers</option>
+                        <option value="6">6 Passengers</option>
+                        <option value="7">7 Passengers</option>
+                    </select>
+                </div>
+                
+                <!-- Passenger Names Container -->
+                <div id="passenger-names-container" class="mb-6 hidden">
+                    <label class="block text-gray-700 mb-2" data-key="passenger_names">Passenger Names</label>
+                    <div id="passenger-inputs">
+                        <!-- Passenger inputs will be generated here -->
+                    </div>
+                </div>
+                
+                <div class="mb-6">
+                    <label class="block text-gray-700 mb-2" for="pickup" data-key="pickup_location">Pickup Location</label>
+                    <div class="relative">
+                        <input type="text" id="pickup" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400" placeholder="Enter pickup address" required>
+                        <div class="absolute right-3 top-3 text-gray-400">
+                            <i class="fas fa-map-marker-alt"></i>
+                        </div>
+                    </div>
+                    <div id="pickup-suggestions" class="autocomplete-suggestions hidden"></div>
+                </div>
+                
+                <div class="mb-6">
+                    <label class="block text-gray-700 mb-2" for="destination" data-key="destination">Destination</label>
+                    <div class="relative">
+                        <input type="text" id="destination" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400" placeholder="Enter destination address" required>
+                        <div class="absolute right-3 top-3 text-gray-400">
+                            <i class="fas fa-map-marker-alt"></i>
+                        </div>
+                    </div>
+                    <div id="destination-suggestions" class="autocomplete-suggestions hidden"></div>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4 mb-6">
+                    <div>
+                        <label class="block text-gray-700 mb-2" for="date" data-key="date">Date</label>
+                        <input type="date" id="date" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400" required>
+                    </div>
+                    <div>
+                        <label class="block text-gray-700 mb-2" for="time" data-key="time">Time</label>
+                        <input type="time" id="time" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400" required>
+                    </div>
+                </div>
+                
+                <div class="mb-6">
+                    <label class="block text-gray-700 mb-2" for="vehicle" data-key="vehicle_type">Vehicle Type</label>
+                    <select id="vehicle" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400" required>
+                        <option value="standard" data-key="standard" data-seats="4">Standard (4 seats)</option>
+                        <option value="executive" data-key="executive" data-seats="4">Executive (4 seats)</option>
+                        <option value="luxury" data-key="luxury" data-seats="4">Luxury (4 seats)</option>
+                        <option value="minivan" data-key="minivan" data-seats="7">Minivan (7 seats)</option>
+                    </select>
+                </div>
+                
+                <div class="mb-6">
+                    <label class="block text-gray-700 mb-2" data-key="payment_method">Payment Method</label>
+                    <div class="flex items-center space-x-4">
+                        <label class="flex items-center">
+                            <input type="radio" name="payment_method" value="cash" checked class="mr-2">
+                            <span data-key="cash_payment">Cash</span>
+                        </label>
+                        <label class="flex items-center">
+                            <input type="radio" name="payment_method" value="card" class="mr-2">
+                            <span data-key="card_payment">Credit/Debit Card</span>
+                        </label>
+                    </div>
+                    <div id="card-element" class="hidden"></div>
+                    <div id="payment-message" class="text-red-600 mt-2"></div>
+                </div>
+                
+                <div class="mb-6">
+                    <label class="block text-gray-700 mb-2" data-key="estimated_fare">Estimated Fare</label>
+                    <p id="estimated-fare" class="text-lg font-semibold text-gray-800">$0.00</p>
+                    <p id="distance-info" class="text-sm text-gray-600"></p>
+                </div>
+                
+                <button type="submit" class="w-full bg-yellow-400 text-black py-3 rounded-full font-bold hover:bg-yellow-500 transition" data-key="confirm_booking">Confirm Booking</button>
+            </form>
+        </div>
+    </section>
+
+    <!-- Confirmation Modal -->
+    <div id="confirmationModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-xl p-8 max-w-md w-full mx-4 relative">
+            <button id="closeModal" class="absolute top-4 right-4 text-gray-500 hover:text-gray-700">
+                <i class="fas fa-times"></i>
+            </button>
+            
+            <div class="text-center mb-6">
+                <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-check text-green-500 text-2xl"></i>
+                </div>
+                <h3 class="text-2xl font-bold mb-2" data-key="booking_confirmed">Booking Confirmed!</h3>
+                <p class="text-gray-600" data-key="booking_success">Your taxi has been successfully booked.</p>
+            </div>
+            
+            <div class="bg-gray-50 p-4 rounded-lg mb-6">
+                <div class="flex justify-between mb-2">
+                    <span class="text-gray-600" data-key="name">Name:</span>
+                    <span class="font-medium" id="modalName"></span>
+                </div>
+                <div class="flex justify-between mb-2">
+                    <span class="text-gray-600" data-key="phone">Phone:</span>
+                    <span class="font-medium" id="modalPhone"></span>
+                </div>
+                <div class="flex justify-between mb-2">
+                    <span class="text-gray-600" data-key="email">Email:</span>
+                    <span class="font-medium" id="modalEmail"></span>
+                </div>
+                <div id="modalPassengersContainer" class="hidden">
+                    <div class="flex justify-between mb-2">
+                        <span class="text-gray-600" data-key="passengers">Passengers:</span>
+                        <div class="font-medium text-right" id="modalPassengers"></div>
+                    </div>
+                </div>
+                <div class="flex justify-between mb-2">
+                    <span class="text-gray-600" data-key="pickup">Pickup:</span>
+                    <span class="font-medium" id="modalPickup"></span>
+                </div>
+                <div class="flex justify-between mb-2">
+                    <span class="text-gray-600" data-key="destination">Destination:</span>
+                    <span class="font-medium" id="modalDestination"></span>
+                </div>
+                <div class="flex justify-between mb-2">
+                    <span class="text-gray-600" data-key="date_time">Date & Time:</span>
+                    <span class="font-medium" id="modalDateTime"></span>
+                </div>
+                <div class="flex justify-between mb-2">
+                    <span class="text-gray-600" data-key="vehicle_type">Vehicle Type:</span>
+                    <span class="font-medium" id="modalVehicle"></span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-600" data-key="payment_method">Payment Method:</span>
+                    <span class="font-medium" id="modalPaymentMethod"></span>
+                </div>
+                <div class="flex justify-between mt-2">
+                    <span class="text-gray-600" data-key="distance">Distance:</span>
+                    <span class="font-medium" id="modalDistance"></span>
+                </div>
+            </div>
+            
+            <button id="modalCloseButton" class="w-full bg-yellow-400 text-black py-3 rounded-full font-bold hover:bg-yellow-500 transition" data-key="done">Done</button>
+        </div>
+    </div>
+
+    <script>
+        // Translations
+        const translations = {
+            en: {
+                back_to_home: 'Back to Home',
+                book_your_ride: 'Book Your Ride',
+                name: 'Name',
+                phone: 'Phone Number',
+                email: 'Email',
+                passenger_count: 'Number of Passengers',
+                passenger_names: 'Passenger Names',
+                passenger_name: 'Passenger {n} Name',
+                pickup_location: 'Pickup Location',
+                destination: 'Destination',
+                date: 'Date',
+                time: 'Time',
+                vehicle_type: 'Vehicle Type',
+                standard: 'Standard (4 seats)',
+                executive: 'Executive (4 seats)',
+                luxury: 'Luxury (4 seats)',
+                minivan: 'Minivan (7 seats)',
+                payment_method: 'Payment Method',
+                cash_payment: 'Cash',
+                card_payment: 'Credit/Debit Card',
+                estimated_fare: 'Estimated Fare',
+                confirm_booking: 'Confirm Booking',
+                booking_confirmed: 'Booking Confirmed!',
+                booking_success: 'Your taxi has been successfully booked.',
+                pickup: 'Pickup',
+                date_time: 'Date & Time',
+                done: 'Done',
+                unable_to_calculate: 'Unable to calculate fare',
+                passengers: 'Passengers',
+                distance: 'Distance'
+            },
+            de: {
+                back_to_home: 'Zurück zur Startseite',
+                book_your_ride: 'Buchen Sie Ihre Fahrt',
+                name: 'Name',
+                phone: 'Telefonnummer',
+                email: 'E-Mail',
+                passenger_count: 'Anzahl der Passagiere',
+                passenger_names: 'Passagiernamen',
+                passenger_name: 'Passagier {n} Name',
+                pickup_location: 'Abholort',
+                destination: 'Zielort',
+                date: 'Datum',
+                time: 'Uhrzeit',
+                vehicle_type: 'Fahrzeugtyp',
+                standard: 'Standard (4 Sitze)',
+                executive: 'Executive (4 Sitze)',
+                luxury: 'Luxus (4 Sitze)',
+                minivan: 'Minivan (7 Sitze)',
+                payment_method: 'Zahlungsmethode',
+                cash_payment: 'Barzahlung',
+                card_payment: 'Kredit-/Debitkarte',
+                estimated_fare: 'Geschätzte Kosten',
+                confirm_booking: 'Buchung bestätigen',
+                booking_confirmed: 'Buchung bestätigt!',
+                booking_success: 'Ihr Taxi wurde erfolgreich gebucht.',
+                pickup: 'Abholung',
+                date_time: 'Datum & Uhrzeit',
+                done: 'Fertig',
+                unable_to_calculate: 'Kosten können nicht berechnet werden',
+                passengers: 'Passagiere',
+                distance: 'Distanz'
+            },
+            ar: {
+                back_to_home: 'العودة إلى الرئيسية',
+                book_your_ride: 'احجز رحلتك',
+                name: 'الاسم',
+                phone: 'رقم الهاتف',
+                email: 'البريد الإلكتروني',
+                passenger_count: 'عدد الركاب',
+                passenger_names: 'أسماء الركاب',
+                passenger_name: 'اسم الراكب {n}',
+                pickup_location: 'موقع الالتقاط',
+                destination: 'الوجهة',
+                date: 'التاريخ',
+                time: 'الوقت',
+                vehicle_type: 'نوع المركبة',
+                standard: 'قياسي (4 مقاعد)',
+                executive: 'تنفيذي (4 مقاعد)',
+                luxury: 'فاخر (4 مقاعد)',
+                minivan: 'ميني فان (7 مقاعد)',
+                payment_method: 'طريقة الدفع',
+                cash_payment: 'الدفع النقدي',
+                card_payment: 'بطاقة ائتمان/خصم',
+                estimated_fare: 'الأجرة المقدرة',
+                confirm_booking: 'تأكيد الحجز',
+                booking_confirmed: 'تم تأكيد الحجز!',
+                booking_success: 'تم حجز تاكسيك بنجاح.',
+                pickup: 'الالتقاط',
+                date_time: 'التاريخ والوقت',
+                done: 'تم',
+                unable_to_calculate: 'غير قادر على حساب الأجرة',
+                passengers: 'الركاب',
+                distance: 'المسافة'
+            }
+        };
+
+        // Set language
+        function setLanguage(lang) {
+            document.querySelectorAll('[data-key]').forEach(el => {
+                if (translations[lang][el.dataset.key]) {
+                    el.textContent = translations[lang][el.dataset.key];
+                }
+            });
+            document.querySelectorAll('option[data-key]').forEach(option => {
+                if (translations[lang][option.dataset.key]) {
+                    option.textContent = translations[lang][option.dataset.key];
+                }
+            });
+            document.dir = (lang === 'ar') ? 'rtl' : 'ltr';
+            document.lang = lang;
+            localStorage.setItem('preferredLang', lang);
+            
+            // Update passenger name placeholders
+            updatePassengerInputs();
+        }
+
+        // Initialize Stripe
+        const stripe = Stripe('YOUR_STRIPE_PUBLIC_KEY');
+        const elements = stripe.elements();
+        const cardElement = elements.create('card', {
+            style: {
+                base: {
+                    fontSize: '16px',
+                    color: '#32325d',
+                    '::placeholder': { color: '#aab7c4' }
+                }
+            }
+        });
+
+        // Global variables for autocomplete
+        let pickupAutocomplete, destinationAutocomplete;
+        let distanceInKm = 0;
+
+        // Google Maps Places Autocomplete
+        function initAutocomplete() {
+            try {
+                const pickup = document.getElementById('pickup');
+                const destination = document.getElementById('destination');
+                const autocompleteOptions = {
+                    types: ['geocode'],
+                    fields: ['formatted_address', 'geometry']
+                };
+                
+                pickupAutocomplete = new google.maps.places.Autocomplete(pickup, autocompleteOptions);
+                destinationAutocomplete = new google.maps.places.Autocomplete(destination, autocompleteOptions);
+
+                pickupAutocomplete.addListener('place_changed', () => {
+                    const place = pickupAutocomplete.getPlace();
+                    if (!place.geometry) console.log('No geometry for pickup');
+                    calculateFare();
+                });
+                
+                destinationAutocomplete.addListener('place_changed', () => {
+                    const place = destinationAutocomplete.getPlace();
+                    if (!place.geometry) console.log('No geometry for destination');
+                    calculateFare();
+                });
+            } catch (err) {
+                console.error('Autocomplete initialization error:', err);
+                document.getElementById('payment-message').textContent = translations[document.lang].unable_to_calculate || 'Google Maps Autocomplete failed. Check API key and billing.';
+            }
+        }
+
+        // Update passenger inputs based on count
+        function updatePassengerInputs() {
+            const passengerCount = parseInt(document.getElementById('passenger-count').value);
+            const passengerInputsContainer = document.getElementById('passenger-inputs');
+            const passengerNamesContainer = document.getElementById('passenger-names-container');
+            
+            // Clear existing inputs
+            passengerInputsContainer.innerHTML = '';
+            
+            // Show/hide container based on passenger count
+            if (passengerCount > 1) {
+                passengerNamesContainer.classList.remove('hidden');
+                
+                // Create inputs for each passenger
+                for (let i = 2; i <= passengerCount; i++) {
+                    const div = document.createElement('div');
+                    div.className = 'passenger-input mb-3';
+                    div.innerHTML = `
+                        <label class="block text-gray-700 mb-1" for="passenger-${i}">
+                            ${translations[document.lang].passenger_name.replace('{n}', i)}
+                        </label>
+                        <input type="text" id="passenger-${i}" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400" required>
+                    `;
+                    passengerInputsContainer.appendChild(div);
+                }
+            } else {
+                passengerNamesContainer.classList.add('hidden');
+            }
+        }
+
+        // Validate passenger count against vehicle capacity
+        function validatePassengerCount() {
+            const passengerCount = parseInt(document.getElementById('passenger-count').value);
+            const vehicleSelect = document.getElementById('vehicle');
+            const maxSeats = parseInt(vehicleSelect.options[vehicleSelect.selectedIndex].getAttribute('data-seats'));
+            
+            if (passengerCount > maxSeats) {
+                alert(`The selected vehicle can only accommodate ${maxSeats} passengers. Please choose a different vehicle or reduce the number of passengers.`);
+                return false;
+            }
+            return true;
+        }
+
+        // Fare calculation
+        async function calculateFare() {
+            const pickup = document.getElementById('pickup').value;
+            const destination = document.getElementById('destination').value;
+            const vehicle = document.getElementById('vehicle').value;
+
+            if (pickup && destination) {
+                try {
+                    // Simulated rates (replace with actual API call)
+                    const rates = {
+                        baseFare: 5.00,
+                        standard: 1.50,
+                        executive: 2.00,
+                        luxury: 2.50,
+                        minivan: 2.00
+                    };
+                    
+                    let baseFare = rates.baseFare;
+                    let ratePerKm = rates[vehicle] || 1.5;
+
+                    // For demonstration, using a fixed distance since we can't access Google APIs without a valid key
+                    // In a real implementation, you would use the Distance Matrix Service
+                    distanceInKm = 15; // Example distance in km
+                    
+                    const estimatedFare = (baseFare + distanceInKm * ratePerKm).toFixed(2);
+                    document.getElementById('estimated-fare').textContent = `$${estimatedFare}`;
+                    document.getElementById('distance-info').textContent = `Distance: ${distanceInKm} km`;
+                    
+                } catch (err) {
+                    console.error('Fare calculation error:', err);
+                    document.getElementById('estimated-fare').textContent = translations[document.lang].unable_to_calculate || 'Unable to calculate fare';
+                }
+            }
+        }
+
+        // DOM Content Loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            const preferredLang = localStorage.getItem('preferredLang') || 'en';
+            setLanguage(preferredLang);
+            document.getElementById('language-select').value = preferredLang;
+            document.getElementById('language-select').addEventListener('change', (e) => setLanguage(e.target.value));
+
+            // Passenger count change handler
+            document.getElementById('passenger-count').addEventListener('change', function() {
+                if (validatePassengerCount()) {
+                    updatePassengerInputs();
+                } else {
+                    // Reset to maximum allowed for selected vehicle
+                    const vehicleSelect = document.getElementById('vehicle');
+                    const maxSeats = parseInt(vehicleSelect.options[vehicleSelect.selectedIndex].getAttribute('data-seats'));
+                    this.value = maxSeats;
+                    updatePassengerInputs();
+                }
+            });
+
+            // Vehicle type change handler
+            document.getElementById('vehicle').addEventListener('change', function() {
+                validatePassengerCount();
+                calculateFare();
+            });
+
+            const paymentMethods = document.querySelectorAll('input[name="payment_method"]');
+            const cardElementDiv = document.getElementById('card-element');
+            paymentMethods.forEach(method => {
+                method.addEventListener('change', () => {
+                    cardElementDiv.classList.toggle('hidden', method.value !== 'card');
+                    if (method.value === 'card') {
+                        cardElement.mount('#card-element');
+                    } else {
+                        cardElement.unmount();
+                    }
+                });
+            });
+
+            const form = document.getElementById('fullBookingForm');
+            const modal = document.getElementById('confirmationModal');
+            const modalName = document.getElementById('modalName');
+            const modalPhone = document.getElementById('modalPhone');
+            const modalEmail = document.getElementById('modalEmail');
+            const modalPickup = document.getElementById('modalPickup');
+            const modalDestination = document.getElementById('modalDestination');
+            const modalDateTime = document.getElementById('modalDateTime');
+            const modalVehicle = document.getElementById('modalVehicle');
+            const modalPaymentMethod = document.getElementById('modalPaymentMethod');
+            const modalPassengersContainer = document.getElementById('modalPassengersContainer');
+            const modalPassengers = document.getElementById('modalPassengers');
+            const modalDistance = document.getElementById('modalDistance');
+            const closeButtons = document.querySelectorAll('#closeModal, #modalCloseButton');
+            const paymentMessage = document.getElementById('payment-message');
+
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                paymentMessage.textContent = '';
+
+                const name = document.getElementById('name').value;
+                const phone = document.getElementById('phone').value;
+                const email = document.getElementById('email').value;
+                const passengerCount = parseInt(document.getElementById('passenger-count').value);
+                const pickup = document.getElementById('pickup').value;
+                const destination = document.getElementById('destination').value;
+                const date = document.getElementById('date').value;
+                const time = document.getElementById('time').value;
+                const vehicle = document.getElementById('vehicle').value;
+                const paymentMethod = document.querySelector('input[name="payment_method"]:checked').value;
+                const estimatedFare = document.getElementById('estimated-fare').textContent;
+
+                // Collect passenger names if more than 1
+                let passengerNames = [];
+                if (passengerCount > 1) {
+                    passengerNames.push(name); // Include the primary passenger
+                    for (let i = 2; i <= passengerCount; i++) {
+                        const passengerName = document.getElementById(`passenger-${i}`).value;
+                        if (passengerName) passengerNames.push(passengerName);
+                    }
+                }
+
+                const dateObj = new Date(date);
+                const formattedDate = dateObj.toLocaleDateString(preferredLang, { 
+                    weekday: 'long', 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric' 
+                });
+
+                let vehicleType = translations[preferredLang][vehicle];
+                let paymentMethodText = paymentMethod === 'cash' ? translations[preferredLang].cash_payment : translations[preferredLang].card_payment;
+
+                const booking = {
+                    id: Date.now().toString(),
+                    name,
+                    phone,
+                    email,
+                    passengerCount,
+                    passengerNames,
+                    pickup,
+                    destination,
+                    date: formattedDate,
+                    time,
+                    vehicle: vehicleType,
+                    paymentMethod: paymentMethodText,
+                    estimatedFare,
+                    distance: `${distanceInKm} km`,
+                    timestamp: new Date().toISOString()
+                };
+                
+                let bookings = JSON.parse(localStorage.getItem('bookings') || '[]');
+                bookings.push(booking);
+                localStorage.setItem('bookings', JSON.stringify(bookings));
+
+                // In a real app, you would send this to your server
+                try {
+                    const response = await fetch('http://localhost:3000/bookings', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(booking)
+                    });
+                    if (!response.ok) throw new Error('Failed to send booking to server');
+                } catch (err) {
+                    paymentMessage.textContent = 'Failed to notify admin. Booking saved locally.';
+                }
+
+                // Payment processing would go here in a real app
+                if (paymentMethod === 'card') {
+                    // Simulate payment processing
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+
+                // Update modal with booking details
+                modalName.textContent = name;
+                modalPhone.textContent = phone;
+                modalEmail.textContent = email;
+                modalPickup.textContent = pickup;
+                modalDestination.textContent = destination;
+                modalDateTime.textContent = `${formattedDate} at ${time}`;
+                modalVehicle.textContent = vehicleType;
+                modalPaymentMethod.textContent = paymentMethodText;
+                modalDistance.textContent = `${distanceInKm} km`;
+                
+                // Show passengers if more than 1
+                if (passengerCount > 1) {
+                    modalPassengers.innerHTML = passengerNames.map(name => `<div>${name}</div>`).join('');
+                    modalPassengersContainer.classList.remove('hidden');
+                } else {
+                    modalPassengersContainer.classList.add('hidden');
+                }
+
+                // Show modal
+                modal.classList.remove('hidden');
+                
+                // Reset form
+                form.reset();
+                if (cardElement.unmount) cardElement.unmount();
+                document.getElementById('estimated-fare').textContent = '$0.00';
+                document.getElementById('distance-info').textContent = '';
+                document.getElementById('passenger-names-container').classList.add('hidden');
+                document.getElementById('passenger-inputs').innerHTML = '';
+                
+                // Reset date to today
+                const today = new Date().toISOString().split('T')[0];
+                document.getElementById('date').value = today;
+            });
+
+            closeButtons.forEach(btn => {
+                btn.addEventListener('click', () => modal.classList.add('hidden'));
+            });
+
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) modal.classList.add('hidden');
+            });
+
+            // Set minimum date to today
+            const dateInput = document.getElementById('date');
+            const today = new Date().toISOString().split('T')[0];
+            dateInput.min = today;
+            dateInput.value = today;
+
+            // Initialize autocomplete with a fallback for API key issues
+            try {
+                initAutocomplete();
+            } catch (err) {
+                console.error('Google Maps API failed to load:', err);
+            }
+        });
+    </script>
+</body>
+</html>
