@@ -9,6 +9,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY_HERE&libraries=places&callback=initAutocomplete" async defer></script>
     <script src="https://js.stripe.com/v3/"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
         body {
             background: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)), url('https://images.unsplash.com/photo-1507525428034-b723cf961d3e?ixlib=rb-4.0.3&auto=format&fit=crop&w=1470&q=80');
@@ -37,6 +38,21 @@
         .pac-container {
             z-index: 10000 !important;
         }
+        #card-icons {
+            display: flex;
+            justify-content: flex-start;
+            margin-top: 10px;
+            gap: 10px;
+        }
+        .card-icon {
+            width: 40px;
+            height: 25px;
+            background-size: contain;
+            background-repeat: no-repeat;
+        }
+        .visa { background-image: url('https://upload.wikimedia.org/wikipedia/commons/5/5e/Visa_Inc._logo.svg'); }
+        .mastercard { background-image: url('https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg'); }
+        .amex { background-image: url('https://upload.wikimedia.org/wikipedia/commons/3/30/American_Express_logo.svg'); }
     </style>
 </head>
 <body class="font-sans text-gray-800">
@@ -158,6 +174,11 @@
                         </label>
                     </div>
                     <div id="card-element" class="hidden"></div>
+                    <div id="card-icons" class="hidden">
+                        <div class="card-icon visa"></div>
+                        <div class="card-icon mastercard"></div>
+                        <div class="card-icon amex"></div>
+                    </div>
                     <div id="payment-message" class="text-red-600 mt-2"></div>
                 </div>
                 
@@ -233,6 +254,7 @@
             </div>
             
             <button id="modalCloseButton" class="w-full bg-yellow-400 text-black py-3 rounded-full font-bold hover:bg-yellow-500 transition" data-key="done">Done</button>
+            <button id="downloadPdf" class="w-full bg-green-400 text-black py-3 rounded-full font-bold hover:bg-green-500 transition mt-4">Download Ticket as PDF</button>
         </div>
     </div>
 
@@ -494,7 +516,6 @@
                 if (validatePassengerCount()) {
                     updatePassengerInputs();
                 } else {
-                    // Reset to maximum allowed for selected vehicle
                     const vehicleSelect = document.getElementById('vehicle');
                     const maxSeats = parseInt(vehicleSelect.options[vehicleSelect.selectedIndex].getAttribute('data-seats'));
                     this.value = maxSeats;
@@ -510,9 +531,11 @@
 
             const paymentMethods = document.querySelectorAll('input[name="payment_method"]');
             const cardElementDiv = document.getElementById('card-element');
+            const cardIconsDiv = document.getElementById('card-icons');
             paymentMethods.forEach(method => {
                 method.addEventListener('change', () => {
                     cardElementDiv.classList.toggle('hidden', method.value !== 'card');
+                    cardIconsDiv.classList.toggle('hidden', method.value !== 'card');
                     if (method.value === 'card') {
                         cardElement.mount('#card-element');
                     } else {
@@ -536,6 +559,7 @@
             const modalDistance = document.getElementById('modalDistance');
             const closeButtons = document.querySelectorAll('#closeModal, #modalCloseButton');
             const paymentMessage = document.getElementById('payment-message');
+            const downloadPdfButton = document.getElementById('downloadPdf');
 
             form.addEventListener('submit', async (e) => {
                 e.preventDefault();
@@ -556,7 +580,7 @@
                 // Collect passenger names if more than 1
                 let passengerNames = [];
                 if (passengerCount > 1) {
-                    passengerNames.push(name); // Include the primary passenger
+                    passengerNames.push(name);
                     for (let i = 2; i <= passengerCount; i++) {
                         const passengerName = document.getElementById(`passenger-${i}`).value;
                         if (passengerName) passengerNames.push(passengerName);
@@ -596,16 +620,41 @@
                 bookings.push(booking);
                 localStorage.setItem('bookings', JSON.stringify(bookings));
 
-                // In a real app, you would send this to your server
+                // Send email to the configured Gmail address with customer email
                 try {
-                    const response = await fetch('http://localhost:3000/bookings', {
+                    console.log('Sending email to:', 'y61735451@gmail.com');
+                    const response = await fetch('http://localhost:3000/send-email', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(booking)
+                        body: JSON.stringify({
+                            to: 'y61735451@gmail.com',
+                            email: email,
+                            subject: `New Booking Confirmation - ${name}`,
+                            text: `
+                                Booking Details:
+                                Name: ${name}
+                                Phone: ${phone}
+                                Email: ${email}
+                                Passengers: ${passengerCount} (${passengerNames.join(', ') || name})
+                                Pickup: ${pickup}
+                                Destination: ${destination}
+                                Date & Time: ${formattedDate} at ${time}
+                                Vehicle Type: ${vehicleType}
+                                Payment Method: ${paymentMethodText}
+                                Estimated Fare: ${estimatedFare}
+                                Distance: ${distanceInKm} km
+                            `
+                        })
                     });
-                    if (!response.ok) throw new Error('Failed to send booking to server');
+                    const data = await response.text();
+                    console.log('Fetch response:', data);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}, message: ${data}`);
+                    }
+                    paymentMessage.textContent = 'Email sent successfully!';
                 } catch (err) {
-                    paymentMessage.textContent = 'Failed to notify admin. Booking saved locally.';
+                    console.error('Email send error:', err);
+                    paymentMessage.textContent = `Failed to send email notification: ${err.message}. Booking saved locally.`;
                 }
 
                 // Payment processing would go here in a real app
@@ -668,6 +717,74 @@
                 initAutocomplete();
             } catch (err) {
                 console.error('Google Maps API failed to load:', err);
+            }
+
+            // PDF Download Function with Enhanced Branding and Error Handling
+            if (downloadPdfButton) {
+                downloadPdfButton.addEventListener('click', () => {
+                    try {
+                        const { jsPDF } = window.jspdf;
+                        if (!jsPDF) throw new Error('jsPDF library is not loaded. Check the script tag.');
+
+                        const doc = new jsPDF();
+
+                        // Add SwiftRide branding with symbol (taxi icon as text representation)
+                        doc.setFontSize(24);
+                        doc.setTextColor(0, 128, 0); // Yeşil renk
+                        doc.text('🚕 SwiftRide', 105, 20, { align: 'center' });
+                        doc.setFontSize(14);
+                        doc.setTextColor(0, 0, 0); // Siyah renk
+                        doc.text('Premium Taxi Service', 105, 30, { align: 'center' });
+
+                        // Add booking details only if modal is filled
+                        const lang = document.lang || 'en';
+                        const details = [
+                            { key: 'name', label: translations[lang].name + ':' },
+                            { key: 'phone', label: translations[lang].phone + ':' },
+                            { key: 'email', label: translations[lang].email + ':' },
+                            { key: 'pickup', label: translations[lang].pickup + ':' },
+                            { key: 'destination', label: translations[lang].destination + ':' },
+                            { key: 'date_time', label: translations[lang].date_time + ':' },
+                            { key: 'vehicle_type', label: translations[lang].vehicle_type + ':' },
+                            { key: 'payment_method', label: translations[lang].payment_method + ':' },
+                            { key: 'distance', label: translations[lang].distance + ':' }
+                        ];
+
+                        let y = 40;
+                        let hasData = false;
+                        details.forEach((item, index) => {
+                            const value = document.getElementById(`modal${item.key.charAt(0).toUpperCase() + item.key.slice(1)}`)?.textContent;
+                            if (value && value.trim()) {
+                                hasData = true;
+                                doc.text(`${item.label} ${value}`, 20, y + (index * 10));
+                            }
+                        });
+
+                        // Passengers if more than 1
+                        const passengerCount = parseInt(document.getElementById('passenger-count').value) || 1;
+                        if (passengerCount > 1 && hasData) {
+                            const passengers = document.getElementById('modalPassengers')?.innerHTML.split('</div>').filter(p => p).map(p => p.replace('<div>', ''));
+                            if (passengers && passengers.length) {
+                                doc.text(`${translations[lang].passengers}:`, 20, y + (details.length * 10));
+                                passengers.forEach((passenger, idx) => {
+                                    doc.text(`${passenger}`, 30, y + ((details.length + 1 + idx) * 10));
+                                });
+                            }
+                        }
+
+                        if (!hasData) {
+                            throw new Error('No booking data available to generate PDF.');
+                        }
+
+                        // Save PDF
+                        doc.save(`SwiftRide_Ticket_${new Date().toISOString().split('T')[0]}.pdf`);
+                    } catch (error) {
+                        console.error('PDF Download Error:', error);
+                        alert(`Failed to generate PDF: ${error.message}. Check console for details.`);
+                    }
+                });
+            } else {
+                console.error('Download PDF button not found in DOM');
             }
         });
     </script>
